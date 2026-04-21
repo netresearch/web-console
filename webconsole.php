@@ -616,14 +616,19 @@ function verify_credential($input, $stored, $legacy_algorithm)
 }
 
 // Command execution
-function execute_command($command) {
+function execute_command($command, ?string $cwd = null) {
     $descriptors = array(
         0 => array('pipe', 'r'), // STDIN
         1 => array('pipe', 'w'), // STDOUT
         2 => array('pipe', 'w')  // STDERR
     );
 
-    $process = proc_open($command . ' 2>&1', $descriptors, $pipes);
+    // Pass an explicit working directory per request so concurrent calls do
+    // not race through the PHP process' CWD, and so a persistent `cd` works
+    // across stateless HTTP requests. Upstream issues #7/#33, PR #28.
+    $cwd = ($cwd !== null && $cwd !== '' && is_dir($cwd)) ? $cwd : null;
+
+    $process = proc_open($command . ' 2>&1', $descriptors, $pipes, $cwd);
     if (!is_resource($process)) die("Can't execute command.");
 
     // Nothing to push to STDIN
@@ -836,7 +841,15 @@ class WebConsoleRPCServer extends BaseJsonRpcServer {
         $result = $this->initialize($token, $environment);
         if ($result) return $result;
 
-        $output = ($command && !is_empty_string($command)) ? execute_command($command) : '';
+        $cwd = null;
+        if (is_array($environment) || is_object($environment)) {
+            $environment_array = (array) $environment;
+            $path              = $environment_array['path'] ?? null;
+            if (is_string($path) && $path !== '') {
+                $cwd = $path;
+            }
+        }
+        $output = ($command && !is_empty_string($command)) ? execute_command($command, $cwd) : '';
         if ($output && substr($output, -1) == "\n") $output = substr($output, 0, -1);
 
         return array('output' => $output);

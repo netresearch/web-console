@@ -14,23 +14,58 @@ If you like Web Console, please consider an opportunity to support it in [any am
 
 # Installation
 
-Installation process is really simple:
+Upload `webconsole.php` to the web server and open it in the browser.
+Configure credentials either in the file itself (`$USER`, `$PASSWORD`) or via
+environment variables (see below). Always put the script behind another
+authentication layer (IP allowlist, HTTP basic auth, VPN) -- it hands out
+shell access.
 
-  - [Download](https://github.com/nickola/web-console/releases/download/v0.9.7/webconsole-0.9.7.zip) latest version of the Web Console.
-  - Unpack archive and open file `webconsole.php` in your favorite text editor.
-  - At the beginning of the file enter your `$USER` and `$PASSWORD` credentials, edit any other settings that you like (see description in the comments).
-  - Upload changed `webconsole.php` file to the web server and open it in the browser.
+# Environment variables
 
-# Docker
+The fork reads credentials from the container environment when the
+corresponding variables are set. These win over values configured in the
+PHP file.
 
-Build and start container:
+| Variable                     | Purpose                                                                              |
+| ---------------------------- | ------------------------------------------------------------------------------------ |
+| `WEBCONSOLE_USER`            | Single-user account name.                                                            |
+| `WEBCONSOLE_PASSWORD_HASH`   | `password_hash()` output (argon2id or bcrypt). Clears `$PASSWORD_HASH_ALGORITHM`.    |
+| `WEBCONSOLE_HOME_DIRECTORY`  | Working directory after login (single-user form).                                    |
+
+Generate a hash once and store it in the environment:
 
 ```
-docker build -t web-console .
-docker run --rm --name web-console -e USER=admin -e PASSWORD=password -p 8000:80 web-console
+php -r 'echo password_hash("your-password", PASSWORD_ARGON2ID), "\n";'
 ```
 
-Now you can visit: http://localhost:8000
+## Netresearch fork changelog (v0.10.0)
+
+Security and compatibility fixes on top of upstream v0.9.7:
+
+ - `password_hash()` / `password_verify()` support via `verify_credential()`.
+   Legacy md5/sha256/plaintext paths keep working but emit a one-shot
+   `E_USER_DEPRECATED`.
+ - `hash_equals()` for credential and session token comparison so strcmp()
+   timing side channels are closed.
+ - Tab completion does not crash on the second call anymore (upstream bug:
+   `filter_pattern()` redeclared + `global $pattern` never resolved).
+ - `cd` persists across stateless requests; `proc_open()` now receives the
+   working directory per request instead of relying on `chdir()` on the PHP
+   process (upstream #7, #33).
+ - Build chain (Grunt/npm/Docker/Makefile, git submodules) removed; the
+   bundled `webconsole.php` from upstream v0.9.7 is the single source. The
+   source/bundle split is planned for v0.11.0.
+ - Dev tools wired up: `composer ci:test` runs phplint, php-cs-fixer,
+   rector and phpstan (level `max`, legacy baseline). See `composer.json`
+   scripts.
+
+### Known follow-ups
+
+ - Session tokens are deterministic (`user:sha256(stored_credential)`) and
+   have no server-side state. A stored-hash leak therefore grants token
+   access. Fix tracked for the planned OOP refactor.
+ - No rate limiting on login attempts. The deployment is expected to
+   front the script with an IP allowlist or basic auth layer.
 
 # About author
 

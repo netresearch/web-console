@@ -546,7 +546,7 @@ function is_empty_string($string) {
 }
 
 function is_equal_strings($string1, $string2) {
-    return strcmp($string1, $string2) == 0;
+    return hash_equals((string) $string1, (string) $string2);
 }
 
 function get_hash($algorithm, $string) {

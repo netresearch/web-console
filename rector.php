@@ -45,11 +45,5 @@ return static function (RectorConfig $rectorConfig): void {
 
         // Paths
         __DIR__ . '/.build',
-
-        // webconsole.php is a 198 KB bundle of inline JS/CSS produced by
-        // the upstream Grunt build. Wholesale refactoring would conflict
-        // with a surgical patching workflow. Re-enable once the
-        // source/bundle split lands in v0.11.0.
-        __DIR__ . '/webconsole.php',
     ]);
 };

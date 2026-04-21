@@ -1,90 +1,140 @@
 # About
 
-> This is a maintained fork of [nickola/web-console](https://github.com/nickola/web-console)
-> (upstream unmaintained since 2021). It carries security and PHP-compatibility
-> fixes on top of the original code. Upstream is unchanged and referenced via
-> `upstream` remote.
+> Netresearch fork of [nickola/web-console](https://github.com/nickola/web-console)
+> (upstream unmaintained since 2021). Modernised for PHP 8.2+, split into a
+> proper OOP codebase, tested, and shipped as a regular composer package.
 
-Web Console is a web-based application that allows to execute shell commands on a server directly from a browser (web-based shell).
-The application is very light, does not require any database and can be installed and configured in about 3 minutes.
-
-If you like Web Console, please consider an opportunity to support it in [any amount of Bitcoin](https://www.blockchain.com/btc/address/1NeDa2nXJLi5A8AN2CerBSSWD363vjdWaX).
+Web Console is a web-based PHP shell: a small HTTP endpoint that accepts
+shell commands from the browser and returns their output through a
+JSON-RPC API. Useful as an emergency console in container deployments
+where you cannot SSH in.
 
 ![Web Console](https://raw.github.com/nickola/web-console/master/screenshots/main.png)
 
 # Installation
 
-Upload `webconsole.php` to the web server and open it in the browser.
-Configure credentials either in the file itself (`$USER`, `$PASSWORD`) or via
-environment variables (see below). Always put the script behind another
-authentication layer (IP allowlist, HTTP basic auth, VPN) -- it hands out
-shell access.
+Install via composer:
 
-# Environment variables
+```
+composer require netresearch/web-console
+```
 
-The fork reads credentials from the container environment when the
-corresponding variables are set. These win over values configured in the
-PHP file.
+Then serve `vendor/netresearch/web-console/webconsole.php` from a URL that
+is protected by an existing auth layer (IP allowlist, HTTP basic auth,
+VPN, OAuth proxy, ...). The script gives shell access -- never expose it
+directly.
 
-| Variable                     | Purpose                                                                              |
-| ---------------------------- | ------------------------------------------------------------------------------------ |
-| `WEBCONSOLE_USER`            | Single-user account name.                                                            |
-| `WEBCONSOLE_PASSWORD_HASH`   | `password_hash()` output (argon2id or bcrypt). Clears `$PASSWORD_HASH_ALGORITHM`.    |
-| `WEBCONSOLE_HOME_DIRECTORY`  | Working directory after login (single-user form).                                    |
+Set the credentials via environment variables:
 
-Generate a hash once and store it in the environment:
+```
+WEBCONSOLE_USER=admin
+WEBCONSOLE_PASSWORD_HASH='$argon2id$v=19$m=65536,t=4,p=1$...'
+WEBCONSOLE_HOME_DIRECTORY=/var/www
+```
+
+Generate the hash once and store it somewhere safer than the repo:
 
 ```
 php -r 'echo password_hash("your-password", PASSWORD_ARGON2ID), "\n";'
 ```
 
-## Netresearch fork changelog (v0.10.0)
+# Environment variables
 
-Security and compatibility fixes on top of upstream v0.9.7:
+| Variable                     | Purpose                                                                                        |
+| ---------------------------- | ---------------------------------------------------------------------------------------------- |
+| `WEBCONSOLE_USER`            | Username for login                                                                             |
+| `WEBCONSOLE_PASSWORD_HASH`   | `password_hash()` output (argon2id or bcrypt). Plaintext/legacy md5 hashes are rejected.       |
+| `WEBCONSOLE_HOME_DIRECTORY`  | Working directory after login. Empty keeps the PHP process' cwd.                               |
+| `WEBCONSOLE_NO_LOGIN`        | Set to a truthy value (`true`, `1`, `yes`, ...) to skip authentication entirely -- dangerous.  |
 
- - `password_hash()` / `password_verify()` support via `verify_credential()`.
-   Legacy md5/sha256/plaintext paths keep working but emit a one-shot
-   `E_USER_DEPRECATED`.
- - `hash_equals()` for credential and session token comparison so strcmp()
-   timing side channels are closed.
- - Tab completion does not crash on the second call anymore (upstream bug:
-   `filter_pattern()` redeclared + `global $pattern` never resolved).
- - `cd` persists across stateless requests; `proc_open()` now receives the
-   working directory per request instead of relying on `chdir()` on the PHP
-   process (upstream #7, #33).
- - Build chain (Grunt/npm/Docker/Makefile, git submodules) removed; the
-   bundled `webconsole.php` from upstream v0.9.7 is the single source. The
-   source/bundle split is planned for v0.11.0.
- - Dev tools wired up: `composer ci:test` runs phplint, php-cs-fixer,
-   rector and phpstan (level `max`, legacy baseline). See `composer.json`
-   scripts.
+# Codebase layout
+
+```
+webconsole.php                        thin entry: autoload + WebConsole::fromEnvironment()->run()
+src/
+ ├── WebConsole.php                   application facade (dispatch POST -> RPC, GET -> HTML)
+ ├── Config.php                       immutable runtime config, built from the env
+ ├── Authentication/
+ │    ├── CredentialVerifier.php      password_hash/verify + session-token helpers
+ │    └── AuthenticationException.php raised on bad credentials
+ ├── Command/
+ │    ├── CommandExecutor.php         proc_open wrapper with explicit per-call cwd
+ │    └── CommandExecutionException.php raised when a command cannot spawn
+ └── Rpc/
+      └── RpcServer.php               extends BaseJsonRpcServer, hosts login/cd/run/completion
+templates/
+ ├── configure.php                    rendered when no credentials are configured
+ └── terminal.php                     rendered once the console is ready
+resources/
+ ├── css/webconsole.css               project-specific terminal styles
+ ├── js/webconsole.js                 project-specific terminal bootstrapper
+ └── html/head.html                   shared <head> fragment
+tests/                                phpunit unit tests (mirrors src/ layout)
+```
+
+# Development
+
+```
+composer install
+composer ci:test        # phplint + cgl + rector + phpstan + phpunit
+composer ci:cgl         # auto-fix php-cs-fixer
+composer ci:rector      # auto-apply Rector rules
+composer ci:test:php:phpstan:baseline   # regenerate the baseline
+composer ci:test:php:unit:coverage      # coverage report under .build/coverage/
+```
+
+## Netresearch fork changelog
+
+### v0.11.0 (planned)
+
+Breaking: the bundled-single-file deployment model is replaced by a
+regular composer package. Upstream's `$USER`/`$PASSWORD`/`$PASSWORD_HASH_ALGORITHM`
+globals no longer exist; credentials must be supplied through
+`WEBCONSOLE_USER` / `WEBCONSOLE_PASSWORD_HASH`.
+
+ - OOP refactor: Fassade (`WebConsole`), value object (`Config`),
+   dedicated service classes for authentication / command execution /
+   RPC, custom exception hierarchy.
+ - Legacy md5/sha256/plaintext credential paths removed. Only
+   `password_hash()` output is accepted (argon2id, bcrypt).
+ - Third-party sources (jquery.terminal, eazy-jsonrpc, normalize.css)
+   come in through composer package repositories pinned to upstream
+   commit SHAs, not git submodules.
+ - Grunt/npm build chain dropped. `webconsole.php` is a ~30-line entry
+   script; the frontend assets are inlined at runtime.
+ - phpunit unit tests for the service classes.
+
+### v0.10.0
+
+Security and compatibility fixes on top of upstream v0.9.7, still in the
+bundled-single-file layout:
+
+ - `password_hash()` support via `verify_credential()`.
+ - `hash_equals()` for credential and session token comparison.
+ - Tab completion does not crash on the second call anymore (upstream
+   bug: `filter_pattern()` redeclared + `global $pattern` never resolved).
+ - `cd` persists across stateless requests; `proc_open()` receives the
+   working directory per request (upstream #7, #33).
+ - `WEBCONSOLE_*` env-var overrides introduced.
+ - Dev tools wired up: `composer ci:test`.
 
 ### Known follow-ups
 
- - Session tokens are deterministic (`user:sha256(stored_credential)`) and
+ - Session tokens are deterministic (`user:sha256(stored_hash)`) and
    have no server-side state. A stored-hash leak therefore grants token
-   access. Fix tracked for the planned OOP refactor.
+   access. Non-trivial to fix without breaking the stateless deploy.
  - No rate limiting on login attempts. The deployment is expected to
    front the script with an IP allowlist or basic auth layer.
 
-# About author
-
-Web Console has been developed by [Nickolay Kovalev](http://nickola.ru). Also, various third-party components are used, see below.
-
 # Used components
 
-  - jQuery JavaScript Library: https://github.com/jquery/jquery
-  - jQuery Terminal Emulator: https://github.com/jcubic/jquery.terminal
-  - jQuery Mouse Wheel Plugin: https://github.com/brandonaaron/jquery-mousewheel
-  - PHP JSON-RPC 2.0 Server/Client Implementation: https://github.com/sergeyfast/eazy-jsonrpc
-  - Normalize.css: https://github.com/necolas/normalize.css
-
-# URLs
-
- - GitHub: https://github.com/nickola/web-console
- - Website: http://nickola.ru/projects/web-console
- - Author: http://nickola.ru
+  - [jQuery Terminal Emulator](https://github.com/jcubic/jquery.terminal)
+    (bundles jQuery 1.7.1 and the mousewheel plugin)
+  - [PHP JSON-RPC 2.0 Server/Client Implementation](https://github.com/sergeyfast/eazy-jsonrpc)
+  - [Normalize.css](https://github.com/necolas/normalize.css)
 
 # License
 
-Web Console is licensed under [GNU LGPL Version 3](http://www.gnu.org/licenses/lgpl.html) license.
+Web Console is licensed under [GNU LGPL Version 3](http://www.gnu.org/licenses/lgpl.html).
+Original work by [Nickolay Kovalev](http://nickola.ru); fork maintained by
+[Netresearch DTT GmbH](https://www.netresearch.de/).

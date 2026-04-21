@@ -1,6 +1,8 @@
 includes:
     - %currentWorkingDirectory%/.build/vendor/phpstan/phpstan-strict-rules/rules.neon
     - %currentWorkingDirectory%/.build/vendor/phpstan/phpstan-deprecation-rules/rules.neon
+    - %currentWorkingDirectory%/.build/vendor/phpstan/phpstan-phpunit/extension.neon
+    - %currentWorkingDirectory%/.build/vendor/phpstan/phpstan-phpunit/rules.neon
     - %currentWorkingDirectory%/phpstan-baseline.neon
 
 parameters:
@@ -11,6 +13,9 @@ parameters:
     phpVersion: 80200
 
     paths:
+        - %currentWorkingDirectory%/src
+        - %currentWorkingDirectory%/templates
+        - %currentWorkingDirectory%/tests
         - %currentWorkingDirectory%/webconsole.php
 
     excludePaths:

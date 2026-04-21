@@ -1,6 +1,6 @@
 {
     "name": "netresearch/web-console",
-    "description": "Web-based shell in your browser (PHP, single-file).",
+    "description": "Web-based shell in your browser (PHP, composer-installed).",
     "type": "library",
     "license": "LGPL-3.0-or-later",
     "authors": [
@@ -16,18 +16,20 @@
         }
     ],
     "require": {
-        "php": "^8.2"
+        "php": "8.2 - 8.5",
+        "jcubic/jquery.terminal": "dev-master",
+        "necolas/normalize.css": "dev-master",
+        "sergeyfast/eazy-jsonrpc": "dev-master"
     },
     "require-dev": {
         "friendsofphp/php-cs-fixer": "^3.85",
-        "jcubic/jquery.terminal": "dev-master",
-        "necolas/normalize.css": "dev-master",
         "overtrue/phplint": "^9.0",
         "phpstan/phpstan": "^2.0",
         "phpstan/phpstan-deprecation-rules": "^2.0",
+        "phpstan/phpstan-phpunit": "^2.0",
         "phpstan/phpstan-strict-rules": "^2.0",
-        "rector/rector": "^2.0",
-        "sergeyfast/eazy-jsonrpc": "dev-master"
+        "phpunit/phpunit": "11 - 13",
+        "rector/rector": "^2.0"
     },
     "repositories": [
         {
@@ -39,6 +41,9 @@
                     "type": "zip",
                     "url": "https://github.com/sergeyfast/eazy-jsonrpc/archive/ecba07b6bce546b735e78d0cd3e384a7084f9b4f.zip",
                     "reference": "ecba07b6bce546b735e78d0cd3e384a7084f9b4f"
+                },
+                "autoload": {
+                    "classmap": ["src/"]
                 }
             }
         },
@@ -74,6 +79,16 @@
         "vendor-dir": ".build/vendor",
         "bin-dir": ".build/bin"
     },
+    "autoload": {
+        "psr-4": {
+            "Netresearch\\WebConsole\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Netresearch\\WebConsole\\Test\\": "tests/"
+        }
+    },
     "scripts": {
         "ci:cgl": [
             "php-cs-fixer fix --diff --verbose --cache-file .build/.php-cs-fixer.cache"
@@ -97,12 +112,19 @@
         "ci:test:php:phpstan:baseline": [
             "phpstan analyze --memory-limit=-1 --generate-baseline phpstan-baseline.neon --allow-empty-baseline"
         ],
+        "ci:test:php:unit": [
+            "phpunit"
+        ],
+        "ci:test:php:unit:coverage": [
+            "XDEBUG_MODE=coverage phpunit --coverage-html .build/coverage/"
+        ],
 
         "ci:test": [
             "@ci:test:php:lint",
             "@ci:test:php:cgl",
             "@ci:test:php:rector",
-            "@ci:test:php:phpstan"
+            "@ci:test:php:phpstan",
+            "@ci:test:php:unit"
         ]
     }
 }

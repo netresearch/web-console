@@ -4,37 +4,41 @@ declare(strict_types=1);
 
 namespace Netresearch\WebConsole\Rpc;
 
-use EazyJsonRpc\BaseJsonRpcServer;
 use Netresearch\WebConsole\Authentication\AuthenticationException;
 use Netresearch\WebConsole\Authentication\CredentialVerifier;
 use Netresearch\WebConsole\Command\CommandExecutor;
 use Netresearch\WebConsole\Config;
 
 /**
- * JSON-RPC endpoint for the web-console terminal frontend.
+ * Business endpoints for the web-console terminal frontend.
  *
- * Extends eazy-jsonrpc's reflection-based dispatcher: every public method
- * becomes a callable RPC method. Keep non-RPC helpers private or move them
- * into a collaborator.
+ * Plain object — every public method declared on this class itself is
+ * exposed as an RPC method when the instance is handed to
+ * {@see JsonRpcServer}. Keep non-RPC helpers private or move them into a
+ * collaborator.
+ *
+ * The class is intentionally cwd-pure: the client holds the shell
+ * environment (`path`, `hostname`), each request carries it along, and no
+ * method mutates the PHP worker's global `chdir()` state. Commands are
+ * dispatched into an explicit cwd through {@see CommandExecutor}; tab
+ * completion resolves its scan root from the same client-held path.
  */
-final class RpcServer extends BaseJsonRpcServer
+final readonly class RpcServer
 {
     public function __construct(
-        private readonly Config $config,
-        private readonly CredentialVerifier $verifier,
-        private readonly CommandExecutor $executor,
+        private Config $config,
+        private CredentialVerifier $verifier,
+        private CommandExecutor $executor,
     ) {
-        // BaseJsonRpcServer::__construct() registers `$this` with the
-        // dispatcher, which is how public methods become RPC endpoints.
-        parent::__construct();
     }
 
     /**
      * RPC entry: authenticate a user, hand back a session token and the
      * initial environment (cwd + hostname) the terminal should display.
      *
-     * Throws when the credentials do not match so eazy-jsonrpc can render
-     * the standard "Incorrect user or password" error response.
+     * Throws {@see AuthenticationException} on bad credentials so the
+     * dispatcher can render the standard "Incorrect user or password"
+     * error response.
      *
      * @return array{token: string, environment: array{path: string, hostname: ?string}, output?: string}
      */
@@ -48,7 +52,7 @@ final class RpcServer extends BaseJsonRpcServer
             if ($this->verifier->verify($password, $stored)) {
                 $result = [
                     'token'       => $this->verifier->tokenFor($user, $stored),
-                    'environment' => $this->environment(),
+                    'environment' => $this->environment((string) getcwd()),
                 ];
 
                 $home = $this->resolveHome();
@@ -69,11 +73,16 @@ final class RpcServer extends BaseJsonRpcServer
     }
 
     /**
-     * RPC entry: change the working directory for the caller's session.
+     * RPC entry: "change" the working directory for the caller's session.
+     *
+     * Stateless: we resolve the target path (relative inputs are resolved
+     * against the client-held `path`), verify it is a directory, and hand
+     * the resolved absolute path back to the client. No `chdir()` on the
+     * PHP worker.
      *
      * Empty path falls back to the configured home directory. Non-existing
-     * or non-cd-able targets return an `output` string the terminal prints
-     * verbatim instead of raising an RPC error (matches upstream UX).
+     * targets return an `output` string the terminal prints verbatim
+     * instead of raising an RPC error (matches upstream UX).
      *
      * @param array<string, mixed>|object $environment client-held environment snapshot
      *
@@ -82,89 +91,78 @@ final class RpcServer extends BaseJsonRpcServer
     public function cd(string $token, array|object $environment, string $path): array
     {
         $this->authenticate($token);
-        $this->applyEnvironment($environment);
 
-        $path = trim($path);
+        $currentPath = $this->currentPath($environment);
+        $target      = trim($path);
 
-        if ($path === '') {
-            $path = $this->resolveHome();
+        if ($target === '') {
+            $target = $this->resolveHome();
         }
 
-        if ($path !== '') {
-            if (!is_dir($path)) {
-                return ['output' => 'cd: ' . $path . ': No such directory'];
-            }
-
-            if (!@chdir($path)) {
-                return ['output' => 'cd: ' . $path . ': Unable to change directory'];
-            }
+        if ($target === '') {
+            return ['environment' => $this->environment($currentPath)];
         }
 
-        return ['environment' => $this->environment()];
+        $resolved = $this->resolveAgainst($currentPath, $target);
+
+        if (!is_dir($resolved)) {
+            return ['output' => 'cd: ' . $path . ': No such directory'];
+        }
+
+        $absolute = realpath($resolved);
+
+        if ($absolute === false) {
+            return ['output' => 'cd: ' . $path . ': Unable to resolve directory'];
+        }
+
+        return ['environment' => $this->environment($absolute)];
     }
 
     /**
-     * RPC entry: produce tab-completion candidates for the current
-     * directory (or the directory implied by the pattern prefix).
+     * RPC entry: produce tab-completion candidates for the directory
+     * implied by the prefix (or the client-held cwd if the prefix is
+     * empty / not a directory).
      *
      * @param array<string, mixed>|object $environment client-held environment snapshot
      * @param string                      $pattern     prefix the client is trying to complete
-     * @param string                      $command     full command line so far (unused; kept for upstream compatibility)
      *
      * @return array{completion: list<string>}
      */
-    public function completion(string $token, array|object $environment, string $pattern, string $command): array
+    public function completion(string $token, array|object $environment, string $pattern): array
     {
         $this->authenticate($token);
-        $this->applyEnvironment($environment);
 
-        $scanPath         = '';
-        $completionPrefix = '';
-        $completion       = [];
+        $cwd              = $this->currentPath($environment);
+        $scan             = $this->resolveCompletionScan($pattern, $cwd);
+        $scanPath         = $scan['scanPath'];
+        $completionPrefix = $scan['prefix'];
 
-        if ($pattern !== '') {
-            if (!is_dir($pattern)) {
-                $pattern = dirname($pattern);
-
-                if ($pattern === '.') {
-                    $pattern = '';
-                }
-            }
-
-            if ($pattern !== '' && is_dir($pattern)) {
-                $scanPath         = $pattern;
-                $completionPrefix = str_ends_with($pattern, '/') ? $pattern : $pattern . '/';
-            } elseif ($pattern === '') {
-                $scanPath = (string) getcwd();
-            }
-        } else {
-            $scanPath = (string) getcwd();
+        if ($scanPath === '') {
+            return ['completion' => []];
         }
 
-        if ($scanPath !== '') {
-            $entries = scandir($scanPath);
+        $entries = @scandir($scanPath);
 
-            if ($entries === false) {
-                return ['completion' => []];
-            }
+        if ($entries === false) {
+            return ['completion' => []];
+        }
 
-            $completion = array_values(array_diff($entries, ['.', '..']));
-            natsort($completion);
-            $completion = array_values($completion);
+        $completion = array_values(array_diff($entries, ['.', '..']));
+        natsort($completion);
+        $completion = array_values($completion);
 
-            if ($completionPrefix !== '') {
-                $completion = array_map(
-                    static fn (string $value): string => $completionPrefix . $value,
-                    $completion,
-                );
-            }
+        if ($completionPrefix !== '') {
+            $completion = array_map(
+                static fn (string $value): string => $completionPrefix . $value,
+                $completion,
+            );
+        }
 
-            if ($pattern !== '') {
-                $completion = array_values(array_filter(
-                    $completion,
-                    static fn (string $value): bool => strncmp($pattern, $value, strlen($pattern)) === 0,
-                ));
-            }
+        if ($pattern !== '') {
+            $completion = array_values(array_filter(
+                $completion,
+                static fn (string $value): bool => strncmp($pattern, $value, strlen($pattern)) === 0,
+            ));
         }
 
         return ['completion' => $completion];
@@ -174,7 +172,9 @@ final class RpcServer extends BaseJsonRpcServer
      * RPC entry: execute a shell command and return its output.
      *
      * The working directory is taken from the client-held environment so
-     * a client-side `cd` persists across stateless HTTP requests.
+     * a client-side `cd` persists across stateless HTTP requests. No
+     * global `chdir()` mutation — the cwd is passed as the 4th arg to
+     * `proc_open()` inside {@see CommandExecutor}.
      *
      * @param array<string, mixed>|object $environment client-held environment snapshot
      *
@@ -183,54 +183,117 @@ final class RpcServer extends BaseJsonRpcServer
     public function run(string $token, array|object $environment, string $command): array
     {
         $this->authenticate($token);
-        $this->applyEnvironment($environment);
 
-        $cwd = null;
-        $env = (array) $environment;
-
-        if (isset($env['path']) && is_string($env['path']) && $env['path'] !== '') {
-            $cwd = $env['path'];
+        if ($command === '') {
+            return ['output' => ''];
         }
 
-        return ['output' => $command !== '' ? $this->executor->execute($command, $cwd) : ''];
+        $cwd = $this->currentPath($environment);
+
+        if ($cwd !== '' && !is_dir($cwd)) {
+            return ['output' => sprintf('%s: No such directory (session cwd vanished)', $cwd)];
+        }
+
+        return ['output' => $this->executor->execute($command, $cwd !== '' ? $cwd : null)];
     }
 
     /**
-     * Snapshot the current process state the terminal displays (cwd +
-     * hostname). Used to seed a fresh login and to refresh after `cd`.
+     * Build a terminal environment snapshot anchored at `$path`.
      *
      * @return array{path: string, hostname: ?string}
      */
-    private function environment(): array
+    private function environment(string $path): array
     {
         return [
-            'path'     => (string) getcwd(),
+            'path'     => $path,
             'hostname' => function_exists('gethostname') ? (string) gethostname() : null,
         ];
     }
 
     /**
-     * Apply the client-held environment back onto the PHP process,
-     * specifically chdir() to environment['path'] when it exists. No-op if
-     * the path is missing or not a directory.
+     * Return the client-held current working directory verbatim.
      *
-     * Caveat: chdir() is global state on the PHP worker. Under PHP-FPM the
-     * effect persists across requests handled by the same worker until the
-     * next client-supplied `path` overwrites it. {@see CommandExecutor}
-     * takes an explicit cwd to avoid this for command execution;
-     * completion() still reads getcwd(). Keeping the behaviour until we
-     * can thread cwd through the RPC layer as pure data.
+     * Deliberately does NOT fall back to the PHP worker's `getcwd()` when
+     * the path is missing or has vanished since the client last saw it —
+     * that would silently swap the user's terminal context for the pool
+     * worker's root directory. Callers that need to dispatch a command or
+     * scan a directory check `is_dir()` on the returned string themselves;
+     * staleness surfaces as an honest "No such directory" error rather
+     * than a confusing jump into `/`.
+     *
+     * Only truly-unset paths (no `path` key, empty string) fall back to
+     * the worker's cwd so a fresh session without a prior `cd` still has
+     * something to work against.
      *
      * @param array<string, mixed>|object $environment client-held environment snapshot
      */
-    private function applyEnvironment(array|object $environment): void
+    private function currentPath(array|object $environment): string
     {
         $env  = (array) $environment;
         $path = $env['path'] ?? null;
 
-        if (is_string($path) && $path !== '' && is_dir($path)) {
-            @chdir($path);
+        if (is_string($path) && $path !== '') {
+            return $path;
         }
+
+        return (string) getcwd();
+    }
+
+    /**
+     * Resolve `$target` against `$base` without touching the PHP worker's
+     * cwd. Absolute paths are returned as-is; relative paths are joined.
+     */
+    private function resolveAgainst(string $base, string $target): string
+    {
+        if ($target === '') {
+            return $base;
+        }
+
+        if (str_starts_with($target, '/')) {
+            return $target;
+        }
+
+        if ($base === '') {
+            return $target;
+        }
+
+        return rtrim($base, '/') . '/' . $target;
+    }
+
+    /**
+     * Work out which directory the client wants listed for tab-completion
+     * and the prefix that must be prepended to each match so the client
+     * sees a consistent absolute-or-relative result.
+     *
+     * @return array{scanPath: string, prefix: string}
+     */
+    private function resolveCompletionScan(string $pattern, string $cwd): array
+    {
+        if ($pattern === '') {
+            return ['scanPath' => $cwd, 'prefix' => ''];
+        }
+
+        $absolute = str_starts_with($pattern, '/') ? $pattern : $this->resolveAgainst($cwd, $pattern);
+
+        if (is_dir($absolute)) {
+            $prefix = str_ends_with($pattern, '/') ? $pattern : $pattern . '/';
+
+            return ['scanPath' => $absolute, 'prefix' => $prefix];
+        }
+
+        $parent = dirname($pattern);
+
+        if ($parent === '.' || $parent === '') {
+            return ['scanPath' => $cwd, 'prefix' => ''];
+        }
+
+        $absoluteParent = str_starts_with($parent, '/') ? $parent : $this->resolveAgainst($cwd, $parent);
+
+        if (!is_dir($absoluteParent)) {
+            return ['scanPath' => '', 'prefix' => ''];
+        }
+
+        return ['scanPath' => $absoluteParent, 'prefix' => rtrim($parent, '/') . '/'];
     }
 
     /**

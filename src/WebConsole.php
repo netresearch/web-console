@@ -7,6 +7,7 @@ namespace Netresearch\WebConsole;
 use Composer\InstalledVersions;
 use Netresearch\WebConsole\Authentication\CredentialVerifier;
 use Netresearch\WebConsole\Command\CommandExecutor;
+use Netresearch\WebConsole\Rpc\JsonRpcServer;
 use Netresearch\WebConsole\Rpc\RpcServer;
 
 /**
@@ -69,17 +70,26 @@ final readonly class WebConsole
     }
 
     /**
-     * Instantiate the RPC server and let eazy-jsonrpc dispatch the POST
-     * body against its public methods.
+     * HTTP adapter: read the POST body, hand it to the transport-agnostic
+     * {@see JsonRpcServer::execute()} and echo the response with the
+     * correct Content-Type.
      */
     private function handleRpc(): void
     {
-        $server = new RpcServer(
+        $endpoints = new RpcServer(
             $this->config,
             new CredentialVerifier(),
             new CommandExecutor(),
         );
-        $server->Execute();
+        $dispatcher = new JsonRpcServer($endpoints);
+
+        $response = $dispatcher->execute((string) file_get_contents('php://input'));
+
+        if (!headers_sent()) {
+            header('Content-Type: application/json');
+        }
+
+        echo $response;
     }
 
     /**

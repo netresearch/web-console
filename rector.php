@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use Rector\CodingStyle\Rector\Catch_\CatchExceptionNameMatchingTypeRector;
 use Rector\Config\RectorConfig;
+use Rector\DeadCode\Rector\ClassMethod\RemoveUnusedPrivateMethodRector;
 use Rector\DeadCode\Rector\ClassMethod\RemoveUselessParamTagRector;
 use Rector\DeadCode\Rector\ClassMethod\RemoveUselessReturnTagRector;
 use Rector\DeadCode\Rector\Stmt\RemoveUnreachableStatementRector;
@@ -42,6 +43,13 @@ return static function (RectorConfig $rectorConfig): void {
         RemoveUnreachableStatementRector::class,
         RemoveUselessParamTagRector::class,
         RemoveUselessReturnTagRector::class,
+
+        // Test fixtures intentionally declare unused helpers (e.g. the
+        // private `secret()` on JsonRpcServerTestTarget asserts that the
+        // dispatcher refuses to expose it).
+        RemoveUnusedPrivateMethodRector::class => [
+            __DIR__ . '/tests',
+        ],
 
         // Paths
         __DIR__ . '/.build',

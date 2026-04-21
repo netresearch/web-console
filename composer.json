@@ -17,10 +17,10 @@
     ],
     "require": {
         "php": "8.2 - 8.5",
+        "ext-json": "*",
         "jcubic/jquery.terminal": "^2.45",
         "jquery/jquery-dist": "^3.7",
-        "necolas/normalize.css": "^8.0",
-        "sergeyfast/eazy-jsonrpc": "^3.0"
+        "necolas/normalize.css": "^8.0"
     },
     "require-dev": {
         "friendsofphp/php-cs-fixer": "^3.85",
@@ -94,7 +94,6 @@
         "ci:rector": [
             "rector process --config rector.php"
         ],
-
         "ci:test:php:lint": [
             "phplint --configuration .phplint.yml"
         ],
@@ -116,7 +115,6 @@
         "ci:test:php:unit:coverage": [
             "XDEBUG_MODE=coverage phpunit --coverage-html .build/coverage/"
         ],
-
         "ci:test": [
             "@ci:test:php:lint",
             "@ci:test:php:cgl",

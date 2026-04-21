@@ -16,8 +16,9 @@ use PHPUnit\Framework\TestCase;
 
 /**
  * Tests for the RPC methods on {@see RpcServer}. Targets the methods
- * directly rather than going through {@see \BaseJsonRpcServer::Execute()}
- * -- reflection-based dispatch is upstream's job and out of scope for us.
+ * directly rather than going through {@see \Netresearch\WebConsole\Rpc\JsonRpcServer::execute()}
+ * -- the dispatcher is covered by its own test class and the RPC target
+ * must be verifiable in isolation.
  */
 #[CoversClass(RpcServer::class)]
 #[UsesClass(Config::class)]

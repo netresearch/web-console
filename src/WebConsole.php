@@ -25,6 +25,15 @@ use Netresearch\WebConsole\Rpc\RpcServer;
 final readonly class WebConsole
 {
     /**
+     * Hard cap on the RPC request body the dispatcher will accept. A
+     * legitimate JSON-RPC envelope for this console is a few hundred
+     * bytes; 1 MiB is comfortably above any real command + environment
+     * payload but small enough that a stray / hostile request cannot
+     * allocate unbounded memory on the PHP worker.
+     */
+    private const MAX_RPC_BODY_BYTES = 1_048_576;
+
+    /**
      * @param Config $config runtime configuration snapshot
      */
     public function __construct(
@@ -70,12 +79,35 @@ final readonly class WebConsole
     }
 
     /**
-     * HTTP adapter: read the POST body, hand it to the transport-agnostic
-     * {@see JsonRpcServer::execute()} and echo the response with the
-     * correct Content-Type.
+     * HTTP adapter: read the POST body (bounded at 1 MiB as a defence-in-
+     * depth guard on top of `post_max_size`), hand it to the transport-
+     * agnostic {@see JsonRpcServer::execute()} and echo the response with
+     * the correct Content-Type.
+     *
+     * A request that exceeds the size limit is rejected with HTTP 413 and
+     * never reaches the dispatcher.
      */
     private function handleRpc(): void
     {
+        $rawLength     = $_SERVER['CONTENT_LENGTH'] ?? 0;
+        $contentLength = is_numeric($rawLength) ? (int) $rawLength : 0;
+
+        if ($contentLength > self::MAX_RPC_BODY_BYTES) {
+            http_response_code(413);
+
+            if (!headers_sent()) {
+                header('Content-Type: application/json');
+            }
+
+            echo json_encode([
+                'jsonrpc' => '2.0',
+                'error'   => ['code' => -32600, 'message' => 'Invalid Request', 'data' => 'request body exceeds ' . self::MAX_RPC_BODY_BYTES . ' bytes'],
+                'id'      => null,
+            ]);
+
+            return;
+        }
+
         $endpoints = new RpcServer(
             $this->config,
             new CredentialVerifier(),
@@ -83,7 +115,7 @@ final readonly class WebConsole
         );
         $dispatcher = new JsonRpcServer($endpoints);
 
-        $response = $dispatcher->execute((string) file_get_contents('php://input'));
+        $response = $dispatcher->execute((string) file_get_contents('php://input', length: self::MAX_RPC_BODY_BYTES));
 
         if (!headers_sent()) {
             header('Content-Type: application/json');

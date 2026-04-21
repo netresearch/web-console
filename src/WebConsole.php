@@ -46,10 +46,19 @@ final readonly class WebConsole
      *   - POST: JSON-RPC endpoint
      *   - GET (any other method): HTML page (terminal or "configure me")
      *
+     * Bails out early when the environment is missing `proc_open()` (some
+     * shared-hosting providers disable it via `disable_functions`).
+     *
      * Sends output directly; does not return a response object.
      */
     public function run(): void
     {
+        if (!function_exists('proc_open')) {
+            $this->renderProcOpenMissing();
+
+            return;
+        }
+
         if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             $this->handleRpc();
 
@@ -71,6 +80,17 @@ final readonly class WebConsole
             new CommandExecutor(),
         );
         $server->Execute();
+    }
+
+    /**
+     * Render a 500 page explaining that `proc_open()` is disabled on the
+     * host. The script cannot do anything useful without it, so we bail
+     * out with an actionable hint instead of the default fatal error.
+     */
+    private function renderProcOpenMissing(): void
+    {
+        http_response_code(500);
+        require __DIR__ . '/../templates/proc-open-missing.php';
     }
 
     /**

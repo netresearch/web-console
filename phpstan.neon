@@ -4,8 +4,8 @@ includes:
     - %currentWorkingDirectory%/phpstan-baseline.neon
 
 parameters:
-    # You can currently choose from 11 levels (0 is the loosest and 10 is the strictest).
-    level: 8
+    # PHPStan's strictest mode.
+    level: max
 
     # PHP 8.2 as minimum target.
     phpVersion: 80200

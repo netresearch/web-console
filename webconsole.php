@@ -553,6 +553,43 @@ function get_hash($algorithm, $string) {
     return hash($algorithm, trim((string) $string));
 }
 
+// Verify a plaintext password against a stored credential.
+//
+// If the stored value is a password_hash() output (bcrypt/argon2),
+// use password_verify() on the raw $input. Otherwise fall back to the
+// legacy behaviour: hash the input with $legacy_algorithm (md5/sha256)
+// or compare in plaintext when no algorithm is configured. Both legacy
+// paths trim $input via get_hash() for backward compatibility with the
+// pre-password_hash behaviour; password_verify() sees the untrimmed
+// value. Legacy paths emit a one-shot deprecation notice.
+function verify_credential($input, $stored, $legacy_algorithm)
+{
+    $stored = (string) $stored;
+    if ($stored === '') {
+        return false;
+    }
+
+    $info = password_get_info($stored);
+    if ($info['algo']) {
+        return password_verify((string) $input, $stored);
+    }
+
+    static $warned = false;
+    if (!$warned) {
+        $warned = true;
+        @trigger_error(
+            'web-console: storing credentials as plaintext or unsalted hashes is deprecated; migrate to password_hash().',
+            E_USER_DEPRECATED
+        );
+    }
+
+    $candidate = $legacy_algorithm
+        ? get_hash($legacy_algorithm, $input)
+        : (string) $input;
+
+    return is_equal_strings($candidate, $stored);
+}
+
 // Command execution
 function execute_command($command) {
     $descriptors = array(
@@ -612,17 +649,16 @@ class WebConsoleRPCServer extends BaseJsonRpcServer {
 
     // Authentication
     private function authenticate_user($user, $password) {
-        $user = trim((string) $user);
-        $password = trim((string) $password);
+        $user     = trim((string) $user);
+        $password = (string) $password;
 
-        if ($user && $password) {
+        if ($user !== '' && $password !== '') {
             global $ACCOUNTS, $PASSWORD_HASH_ALGORITHM;
 
             if (isset($ACCOUNTS[$user]) && !is_empty_string($ACCOUNTS[$user])) {
-                if ($PASSWORD_HASH_ALGORITHM) $password = get_hash($PASSWORD_HASH_ALGORITHM, $password);
-
-                if (is_equal_strings($password, $ACCOUNTS[$user]))
-                    return $user . ':' . get_hash('sha256', $password);
+                if (verify_credential($password, $ACCOUNTS[$user], $PASSWORD_HASH_ALGORITHM)) {
+                    return $user . ':' . get_hash('sha256', $ACCOUNTS[$user]);
+                }
             }
         }
 

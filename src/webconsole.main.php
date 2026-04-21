@@ -228,13 +228,10 @@ class WebConsoleRPCServer extends BaseJsonRpcServer {
 
             // Pattern
             if (!empty($pattern) && !empty($completion)) {
-                // For PHP version that does not support anonymous functions (available since PHP 5.3.0)
-                function filter_pattern($value) {
-                    global $pattern;
-                    return !strncmp($pattern, $value, strlen($pattern));
-                }
-
-                $completion = array_values(array_filter($completion, 'filter_pattern'));
+                $completion = array_values(array_filter(
+                    $completion,
+                    fn($value) => strncmp($pattern, (string) $value, strlen($pattern)) === 0
+                ));
             }
         }
 

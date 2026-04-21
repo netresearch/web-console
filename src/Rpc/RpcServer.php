@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Netresearch\WebConsole\Rpc;
 
-use BaseJsonRpcServer;
+use EazyJsonRpc\BaseJsonRpcServer;
 use Netresearch\WebConsole\Authentication\AuthenticationException;
 use Netresearch\WebConsole\Authentication\CredentialVerifier;
 use Netresearch\WebConsole\Command\CommandExecutor;

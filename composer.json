@@ -17,9 +17,10 @@
     ],
     "require": {
         "php": "8.2 - 8.5",
-        "jcubic/jquery.terminal": "dev-master",
-        "necolas/normalize.css": "dev-master",
-        "sergeyfast/eazy-jsonrpc": "dev-master"
+        "jcubic/jquery.terminal": "^2.45",
+        "jquery/jquery-dist": "^3.7",
+        "necolas/normalize.css": "^8.0",
+        "sergeyfast/eazy-jsonrpc": "^3.0"
     },
     "require-dev": {
         "friendsofphp/php-cs-fixer": "^3.85",
@@ -35,27 +36,24 @@
         {
             "type": "package",
             "package": {
-                "name": "sergeyfast/eazy-jsonrpc",
-                "version": "dev-master",
+                "name": "jcubic/jquery.terminal",
+                "version": "2.45.2",
                 "dist": {
                     "type": "zip",
-                    "url": "https://github.com/sergeyfast/eazy-jsonrpc/archive/ecba07b6bce546b735e78d0cd3e384a7084f9b4f.zip",
-                    "reference": "ecba07b6bce546b735e78d0cd3e384a7084f9b4f"
-                },
-                "autoload": {
-                    "classmap": ["src/"]
+                    "url": "https://github.com/jcubic/jquery.terminal/archive/3156d2e4d7a87149e8374ea6aa354ee8867d7e1e.zip",
+                    "reference": "3156d2e4d7a87149e8374ea6aa354ee8867d7e1e"
                 }
             }
         },
         {
             "type": "package",
             "package": {
-                "name": "jcubic/jquery.terminal",
-                "version": "dev-master",
+                "name": "jquery/jquery-dist",
+                "version": "3.7.1",
                 "dist": {
                     "type": "zip",
-                    "url": "https://github.com/jcubic/jquery.terminal/archive/17401667727f43adb4a9b453bb75374980cc3a2b.zip",
-                    "reference": "17401667727f43adb4a9b453bb75374980cc3a2b"
+                    "url": "https://github.com/jquery/jquery-dist/archive/fde1f76e2799dd877c176abde0ec836553246991.zip",
+                    "reference": "fde1f76e2799dd877c176abde0ec836553246991"
                 }
             }
         },
@@ -63,11 +61,11 @@
             "type": "package",
             "package": {
                 "name": "necolas/normalize.css",
-                "version": "dev-master",
+                "version": "8.0.1",
                 "dist": {
                     "type": "zip",
-                    "url": "https://github.com/necolas/normalize.css/archive/4559de001bc15838c0314c713645086bdef64bc3.zip",
-                    "reference": "4559de001bc15838c0314c713645086bdef64bc3"
+                    "url": "https://github.com/necolas/normalize.css/archive/981ce6bc9c29d28f1554d699654b247463163ccc.zip",
+                    "reference": "981ce6bc9c29d28f1554d699654b247463163ccc"
                 }
             }
         }

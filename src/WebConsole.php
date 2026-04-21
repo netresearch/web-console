@@ -98,7 +98,7 @@ final readonly class WebConsole
 
     /**
      * Concatenate the CSS assets into a single string ready to be inlined
-     * into a `<style>` block: normalize reset + jQuery-terminal theme +
+     * into a `<style>` block: normalize reset + jquery.terminal theme +
      * project-specific styles.
      */
     private function bundleCss(): string
@@ -107,22 +107,25 @@ final readonly class WebConsole
         $jqueryTerminal = InstalledVersions::getInstallPath('jcubic/jquery.terminal');
 
         return file_get_contents($normalize . '/normalize.css')
-            . file_get_contents($jqueryTerminal . '/css/jquery.terminal-0.11.12.min.css')
+            . file_get_contents($jqueryTerminal . '/css/jquery.terminal.min.css')
             . file_get_contents(__DIR__ . '/../resources/css/webconsole.css');
     }
 
     /**
      * Concatenate the JS assets into a single string ready to be inlined
-     * into a `<script>` block: jQuery + mousewheel + jQuery-terminal +
-     * project-specific behaviour.
+     * into a `<script>` block: jQuery + jquery.terminal + project-specific
+     * behaviour.
+     *
+     * jquery.mousewheel is no longer needed (jquery.terminal 2.x uses the
+     * native `wheel` event).
      */
     private function bundleJs(): string
     {
+        $jquery         = InstalledVersions::getInstallPath('jquery/jquery-dist');
         $jqueryTerminal = InstalledVersions::getInstallPath('jcubic/jquery.terminal');
 
-        return file_get_contents($jqueryTerminal . '/js/jquery-1.7.1.min.js')
-            . file_get_contents($jqueryTerminal . '/js/jquery.mousewheel-min.js')
-            . file_get_contents($jqueryTerminal . '/js/jquery.terminal-0.11.12.min.js')
+        return file_get_contents($jquery . '/dist/jquery.min.js')
+            . file_get_contents($jqueryTerminal . '/js/jquery.terminal.min.js')
             . file_get_contents(__DIR__ . '/../resources/js/webconsole.js');
     }
 }

@@ -1,5 +1,10 @@
 # About
 
+> This is a maintained fork of [nickola/web-console](https://github.com/nickola/web-console)
+> (upstream unmaintained since 2021). It carries security and PHP-compatibility
+> fixes on top of the original code. Upstream is unchanged and referenced via
+> `upstream` remote.
+
 Web Console is a web-based application that allows to execute shell commands on a server directly from a browser (web-based shell).
 The application is very light, does not require any database and can be installed and configured in about 3 minutes.
 

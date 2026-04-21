@@ -1,0 +1,55 @@
+{
+    "name": "netresearch/web-console",
+    "description": "Web-based shell in your browser (PHP, single-file).",
+    "type": "library",
+    "license": "LGPL-3.0-or-later",
+    "authors": [
+        {
+            "name": "Nickolay Kovalev",
+            "homepage": "http://nickola.ru/",
+            "role": "Original author"
+        },
+        {
+            "name": "Netresearch DTT GmbH",
+            "homepage": "https://www.netresearch.de/",
+            "role": "Maintainer"
+        }
+    ],
+    "require": {
+        "php": "^8.2"
+    },
+    "require-dev": {
+        "friendsofphp/php-cs-fixer": "^3.85",
+        "overtrue/phplint": "^9.0",
+        "phpstan/phpstan": "^2.0",
+        "phpstan/phpstan-deprecation-rules": "^2.0",
+        "phpstan/phpstan-strict-rules": "^2.0"
+    },
+    "config": {
+        "sort-packages": true,
+        "vendor-dir": ".build/vendor",
+        "bin-dir": ".build/bin"
+    },
+    "scripts": {
+        "ci:cgl": [
+            "php-cs-fixer fix --diff --verbose --cache-file .build/.php-cs-fixer.cache"
+        ],
+        "ci:test:php:cgl": [
+            "@ci:cgl --dry-run"
+        ],
+        "ci:test:php:lint": [
+            "phplint --configuration .phplint.yml"
+        ],
+        "ci:test:php:phpstan": [
+            "phpstan analyze --memory-limit=-1"
+        ],
+        "ci:test:php:phpstan:baseline": [
+            "phpstan analyze --memory-limit=-1 --generate-baseline phpstan-baseline.neon --allow-empty-baseline"
+        ],
+        "ci:test": [
+            "@ci:test:php:lint",
+            "@ci:test:php:cgl",
+            "@ci:test:php:phpstan"
+        ]
+    }
+}

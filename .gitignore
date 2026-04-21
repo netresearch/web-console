@@ -1,9 +1,9 @@
 # MacOS
 .DS_Store
 
-# Node.js
-node_modules
+# IDE
+/.idea/
 
-# Release
-release/parts
-release/webconsole*
+# Composer dev-tooling
+/.build/
+/composer.lock

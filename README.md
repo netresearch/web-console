@@ -153,6 +153,33 @@ composer ci:test:php:unit:coverage      # coverage report under .build/coverage/
 
 ## Netresearch fork changelog
 
+### v0.13.0
+
+Breaking: the `sergeyfast/eazy-jsonrpc` dependency is gone.
+
+Upstream was unmaintained since 2019 and carried a PHP 8+ incompatibility
+(`array_key_exists()` called with a `stdClass` as the second argument)
+that any caller sending named JSON-RPC params would hit. Rather than
+fork yet another dead library we ship a minimal in-house dispatcher.
+
+ - New `Netresearch\WebConsole\Rpc\JsonRpcServer` (≈50 LoC, PSR-12):
+   reflection-based dispatch, positional and named params, notifications,
+   full JSON-RPC 2.0 error-code coverage. No batch or SMD — the console
+   frontend does not need either.
+ - `RpcServer` loses its `extends BaseJsonRpcServer`; it is now a plain
+   business class. Custom `JsonRpcException` replaces the upstream error
+   envelope.
+ - `composer.json`: `sergeyfast/eazy-jsonrpc` removed; `ext-json` added
+   to `require` to make the actual dependency explicit.
+ - CSS: font-size binding for jquery.terminal 2.x (the theme uses the
+   `--size` custom property, not a hard-coded pixel value).
+ - Frontend build tooling: `package.json` + `biome.json`, `composer
+   ci:js:{check,fix}` wired into `ci:test`. `webconsole.js` reformatted
+   through Biome and refactored to modern ES (`const`/`let`, arrow
+   functions, optional chaining, JSDoc on every exported function).
+ - Test suite: 59 tests / 103 assertions, phpstan level max with an
+   empty baseline.
+
 ### v0.12.0
 
 Frontend dependency refresh and a small host-compatibility fix. No

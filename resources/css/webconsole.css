@@ -2,11 +2,20 @@ body {
     background-color: #000000;
 }
 
+/*
+ * jquery.terminal 2.x derives --terminal-font-size and --terminal-line from
+ * --size (default 1 -> 12px). 1.25 matches the 15px / 18px pairing the
+ * upstream 0.11 skin used. Setting the variable on :root so it cascades
+ * into auxiliary DOM (password mask, paste helper, modal dialogs) that
+ * jquery.terminal renders outside the `.terminal` subtree.
+ */
+:root {
+    --size: 1.25;
+}
+
 body, .terminal, .cmd, .terminal .terminal-output div div, .terminal .prompt {
     color: #cccccc;
     font-family: monospace, fixed;
-    font-size: 15px;
-    line-height: 18px;
 }
 
 a, a:hover, .terminal a, .terminal a:hover {

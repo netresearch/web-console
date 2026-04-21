@@ -23,7 +23,8 @@
         "overtrue/phplint": "^9.0",
         "phpstan/phpstan": "^2.0",
         "phpstan/phpstan-deprecation-rules": "^2.0",
-        "phpstan/phpstan-strict-rules": "^2.0"
+        "phpstan/phpstan-strict-rules": "^2.0",
+        "rector/rector": "^2.0"
     },
     "config": {
         "sort-packages": true,
@@ -34,11 +35,18 @@
         "ci:cgl": [
             "php-cs-fixer fix --diff --verbose --cache-file .build/.php-cs-fixer.cache"
         ],
+        "ci:rector": [
+            "rector process --config rector.php"
+        ],
+
+        "ci:test:php:lint": [
+            "phplint --configuration .phplint.yml"
+        ],
         "ci:test:php:cgl": [
             "@ci:cgl --dry-run"
         ],
-        "ci:test:php:lint": [
-            "phplint --configuration .phplint.yml"
+        "ci:test:php:rector": [
+            "@ci:rector --dry-run"
         ],
         "ci:test:php:phpstan": [
             "phpstan analyze --memory-limit=-1"
@@ -46,9 +54,11 @@
         "ci:test:php:phpstan:baseline": [
             "phpstan analyze --memory-limit=-1 --generate-baseline phpstan-baseline.neon --allow-empty-baseline"
         ],
+
         "ci:test": [
             "@ci:test:php:lint",
             "@ci:test:php:cgl",
+            "@ci:test:php:rector",
             "@ci:test:php:phpstan"
         ]
     }

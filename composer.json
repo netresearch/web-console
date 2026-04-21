@@ -94,6 +94,7 @@
         "ci:rector": [
             "rector process --config rector.php"
         ],
+
         "ci:test:php:lint": [
             "phplint --configuration .phplint.yml"
         ],
@@ -115,12 +116,22 @@
         "ci:test:php:unit:coverage": [
             "XDEBUG_MODE=coverage phpunit --coverage-html .build/coverage/"
         ],
+
+        "ci:test:js:biome": [
+            "scripts/ci-js-biome.sh"
+        ],
+
+        "ci:js:fix": [
+            "npm run --silent ci:js:fix"
+        ],
+
         "ci:test": [
             "@ci:test:php:lint",
             "@ci:test:php:cgl",
             "@ci:test:php:rector",
             "@ci:test:php:phpstan",
-            "@ci:test:php:unit"
+            "@ci:test:php:unit",
+            "@ci:test:js:biome"
         ]
     }
 }

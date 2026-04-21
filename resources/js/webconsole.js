@@ -2,52 +2,75 @@
  * Web-Console terminal bootstrapper.
  *
  * Targets jquery.terminal 2.x running on top of jQuery 3.x. Talks to the
- * PHP backend via plain JSON-RPC 2.0 over XHR ($.ajax) -- the historical
+ * PHP backend via plain JSON-RPC 2.0 over XHR ($.ajax) — the historical
  * $.jrpc plugin is gone in jquery.terminal 2.x, so we hand-roll the
  * envelope here.
+ *
+ * Wrapped in an IIFE so the module stays out of the global scope without
+ * requiring a bundler. The server sets the optional `__NO_LOGIN__` global
+ * to disable authentication entirely.
  */
-(function ($) {
-    $(document).ready(function () {
-        var settings = {
+/* global __NO_LOGIN__ */
+(($) => {
+    $(document).ready(() => {
+        /** @type {{url: string, prompt_path_length: number, domain: string, is_small_window: boolean}} */
+        const settings = {
             url: 'webconsole.php',
             prompt_path_length: 32,
             domain: document.domain || window.location.host,
-            is_small_window: $(document).width() < 625
+            is_small_window: $(document).width() < 625,
         };
-        var environment = { user: '', hostname: '', path: '' };
-        var no_login = typeof __NO_LOGIN__ !== 'undefined' ? __NO_LOGIN__ : false;
-        var silent_mode = false;
-        var rpc_id = 0;
 
-        // Banner
-        var banner_main = 'Web Console';
-        var banner_link = 'https://github.com/netresearch/web-console';
-        var banner_extra = banner_link + '\n';
+        /** @type {{user: string, hostname: string, path: string}} */
+        const environment = { user: '', hostname: '', path: '' };
+
+        /** Skip authentication entirely when the backend exposed __NO_LOGIN__ = true. */
+        const noLogin = typeof __NO_LOGIN__ !== 'undefined' ? __NO_LOGIN__ : false;
+
+        /** Suppress the jquery.terminal exception handler during programmatic teardown. */
+        let silentMode = false;
+
+        /** Monotonically increasing request id for the JSON-RPC envelope. */
+        let rpcId = 0;
+
+        // --- Banner ----------------------------------------------------------
+        const bannerLink = 'https://github.com/netresearch/web-console';
+        let bannerMain = 'Web Console';
+        let bannerExtra = `${bannerLink}\n`;
         if (!settings.is_small_window) {
-            banner_main =
+            bannerMain =
                 '  _    _      _     _____                       _                ' +
                 '\n | |  | |    | |   /  __ \\                     | |            ' +
                 '\n | |  | | ___| |__ | /  \\/ ___  _ __  ___  ___ | | ___        ' +
-                '\n | |/\\| |/ _ \\ \'_ \\| |    / _ \\| \'_ \\/ __|/ _ \\| |/ _ \\ ' +
+                "\n | |/\\| |/ _ \\ '_ \\| |    / _ \\| '_ \\/ __|/ _ \\| |/ _ \\ " +
                 '\n \\  /\\  /  __/ |_) | \\__/\\ (_) | | | \\__ \\ (_) | |  __/  ' +
                 '\n  \\/  \\/ \\___|____/ \\____/\\___/|_| |_|___/\\___/|_|\\___| ';
-            banner_extra = '\n                 ' + banner_link + '\n';
+            bannerExtra = `\n                 ${bannerLink}\n`;
         }
 
-        // JSON-RPC call helper. Returns nothing; the callbacks handle
-        // success/error. `options.pause = false` keeps the terminal
-        // responsive (used for tab completion).
-        function rpc(terminal, method, params, onSuccess, onError, options) {
-            options = $.extend({ pause: true }, options);
-            if (options.pause) {
+        /**
+         * JSON-RPC call helper. Fire-and-forget; the callbacks own
+         * success/error handling. `options.pause = false` keeps the
+         * terminal responsive during tab completion.
+         *
+         * @param {object} terminal the jquery.terminal instance
+         * @param {string} method RPC method name
+         * @param {Array<unknown>} params positional params for the envelope
+         * @param {(result: unknown) => void} [onSuccess] success handler invoked with the `result` body
+         * @param {() => void} [onError] fallback invoked when the request fails
+         * @param {{pause?: boolean}} [options] override defaults (currently: pause the terminal UI)
+         */
+        const rpc = (terminal, method, params, onSuccess, onError, options) => {
+            const opts = $.extend({ pause: true }, options);
+            if (opts.pause) {
                 terminal.pause();
             }
 
-            var payload = {
+            const payload = {
                 jsonrpc: '2.0',
-                method: method,
+                method,
                 params: params || [],
-                id: ++rpc_id
+                id: ++rpcId,
             };
 
             $.ajax({
@@ -55,10 +78,10 @@
                 type: 'POST',
                 dataType: 'json',
                 contentType: 'application/json',
-                data: JSON.stringify(payload)
+                data: JSON.stringify(payload),
             })
-                .done(function (json) {
-                    if (options.pause) {
+                .done((json) => {
+                    if (opts.pause) {
                         terminal.resume();
                     }
 
@@ -74,16 +97,16 @@
                         return;
                     }
 
-                    var message = $.trim((json && json.error && json.error.message) || '');
-                    var data = $.trim((json && json.error && json.error.data) || '');
+                    let message = $.trim(json?.error?.message || '');
+                    let data = $.trim(json?.error?.data || '');
                     if (!message && data) {
                         message = data;
                         data = '';
                     }
-                    terminal.error('[ERROR] RPC: ' + (message || 'Unknown error') + (data ? ' (' + data + ')' : ''));
+                    terminal.error(`[ERROR] RPC: ${message || 'Unknown error'}${data ? ` (${data})` : ''}`);
                 })
-                .fail(function (xhr, status) {
-                    if (options.pause) {
+                .fail((xhr, status) => {
+                    if (opts.pause) {
                         terminal.resume();
                     }
 
@@ -96,100 +119,136 @@
                         return;
                     }
 
-                    var response = $.trim((xhr && xhr.responseText) || '');
+                    const response = $.trim(xhr?.responseText || '');
                     terminal.error(
-                        '[ERROR] AJAX: ' +
-                            (status || 'Unknown error') +
-                            (response ? '\nServer response:\n' + response : '')
+                        `[ERROR] AJAX: ${status || 'Unknown error'}${response ? `\nServer response:\n${response}` : ''}`,
                     );
                 });
-        }
+        };
 
-        function rpcAuthenticated(terminal, method, params, onSuccess, onError, options) {
-            var token = terminal.token();
+        /**
+         * Authenticated variant of {@link rpc}: prepends the session
+         * token and the client-held environment snapshot.
+         *
+         * @param {object} terminal the jquery.terminal instance
+         * @param {string} method RPC method name
+         * @param {Array<unknown>} params positional params specific to the method
+         * @param {(result: unknown) => void} [onSuccess]
+         * @param {() => void} [onError]
+         * @param {{pause?: boolean}} [options]
+         */
+        const rpcAuthenticated = (terminal, method, params, onSuccess, onError, options) => {
+            const token = terminal.token();
             if (!token) {
                 terminal.error('[ERROR] Access denied (no authentication token found)');
                 return;
             }
 
-            var rpcParams = [token, environment];
-            if (params && params.length) {
-                rpcParams.push.apply(rpcParams, params);
+            const rpcParams = [token, environment];
+            if (params?.length) {
+                rpcParams.push(...params);
             }
             rpc(terminal, method, rpcParams, onSuccess, onError, options);
-        }
+        };
 
-        function renderOutput(output) {
+        /**
+         * Pretty-print a command's stdout for the terminal. Strings pass
+         * through, arrays and objects are JSON-serialised.
+         *
+         * @param {unknown} output
+         */
+        const renderOutput = (output) => {
             if (output === undefined || output === null || output === '') {
                 return;
             }
             if (typeof output === 'string') {
                 terminal.echo(output);
-            } else if (output instanceof Array) {
+            } else if (Array.isArray(output)) {
                 terminal.echo(output.map(JSON.stringify).join(' '));
             } else if (typeof output === 'object') {
                 terminal.echo(JSON.stringify(output));
             } else {
                 terminal.echo(String(output));
             }
-        }
+        };
 
-        function makePrompt() {
-            var path = environment.path;
+        /**
+         * Render the `user@host path$` prompt with the current environment.
+         * Long paths are truncated from the left with an ellipsis.
+         *
+         * @returns {string}
+         */
+        const makePrompt = () => {
+            let path = environment.path;
             if (path && path.length > settings.prompt_path_length) {
-                path = '...' + path.slice(path.length - settings.prompt_path_length + 3);
+                path = `...${path.slice(path.length - settings.prompt_path_length + 3)}`;
             }
 
             return (
-                '[[b;#d33682;]' +
-                (environment.user || 'user') +
-                ']' +
-                '@[[b;#6c71c4;]' +
-                (environment.hostname || settings.domain || 'web-console') +
-                '] ' +
-                (path || '~') +
-                '$ '
+                `[[b;#d33682;]${environment.user || 'user'}]` +
+                `@[[b;#6c71c4;]${environment.hostname || settings.domain || 'web-console'}] ` +
+                `${path || '~'}$ `
             );
-        }
+        };
 
-        function updateEnvironment(terminal, data) {
+        /**
+         * Merge a server-sent environment snapshot into the client-held
+         * copy and re-render the prompt.
+         *
+         * @param {object} terminal
+         * @param {{user?: string, hostname?: string, path?: string} | undefined} data
+         */
+        const updateEnvironment = (terminal, data) => {
             if (!data) {
                 return;
             }
             $.extend(environment, data);
             terminal.set_prompt(makePrompt());
-        }
+        };
 
-        // Interpreter -- dispatches `cd` locally (as its own RPC method)
-        // and everything else through `run`.
-        function interpreter(command, terminal) {
-            command = $.trim(command || '');
-            if (!command) {
+        /**
+         * Interpreter — dispatches `cd` locally (as its own RPC method)
+         * and everything else through `run`.
+         *
+         * @param {string} command
+         * @param {object} terminal
+         */
+        const interpreter = (command, terminal) => {
+            const trimmed = $.trim(command || '');
+            if (!trimmed) {
                 return;
             }
 
-            var parsed = $.terminal.split_command(command);
-            var method;
-            var params;
+            const parsed = $.terminal.split_command(trimmed);
+            let method;
+            let params;
 
             if (parsed.name.toLowerCase() === 'cd') {
                 method = 'cd';
                 params = [parsed.args.length ? parsed.args[0] : ''];
             } else {
                 method = 'run';
-                params = [command];
+                params = [trimmed];
             }
 
-            rpcAuthenticated(terminal, method, params, function (result) {
+            rpcAuthenticated(terminal, method, params, (result) => {
                 updateEnvironment(terminal, result.environment);
                 renderOutput(result.output);
             });
-        }
+        };
 
-        function login(user, password, callback) {
-            user = $.trim(user || '');
-            password = $.trim(password || '');
-            if (!user || !password) {
+        /**
+         * jquery.terminal login callback. Resolves with the session
+         * token or null on failure.
+         *
+         * @param {string} user
+         * @param {string} password
+         * @param {(token: string | null) => void} callback
+         */
+        const login = (user, password, callback) => {
+            const trimmedUser = $.trim(user || '');
+            const trimmedPassword = $.trim(password || '');
+            if (!trimmedUser || !trimmedPassword) {
                 callback(null);
                 return;
             }
@@ -197,10 +256,10 @@
             rpc(
                 terminal,
                 'login',
-                [user, password],
-                function (result) {
-                    if (result && result.token) {
-                        environment.user = user;
+                [trimmedUser, trimmedPassword],
+                (result) => {
+                    if (result?.token) {
+                        environment.user = trimmedUser;
                         updateEnvironment(terminal, result.environment);
                         renderOutput(result.output);
                         callback(result.token);
@@ -208,75 +267,96 @@
                     }
                     callback(null);
                 },
-                function () {
+                () => {
                     callback(null);
-                }
+                },
             );
-        }
+        };
 
+        /**
+         * Tab-completion callback. Sends the prefix under the cursor to
+         * the server and awaits a list of candidates. The broader command
+         * context is not forwarded — the PHP side only does path-based
+         * completion, so sending it would be dead protocol.
+         *
+         * Declared as a regular `function` so jquery.terminal's `this`
+         * binding (the terminal instance) works.
+         *
+         * @this {object}
+         * @param {string} pattern prefix under the cursor
+         * @param {(completions: string[]) => void} callback
+         */
         function completion(pattern, callback) {
-            // `this` is the terminal instance inside the completion callback
-            var terminal = this;
-            var state = terminal.export_view ? terminal.export_view() : terminal.state();
-            var before = state.command.substring(0, state.position);
-
             rpcAuthenticated(
-                terminal,
+                this,
                 'completion',
-                [pattern, before],
-                function (result) {
+                [pattern],
+                (result) => {
                     renderOutput(result.output);
-                    if (result.completion && result.completion.length) {
+                    if (result.completion?.length) {
                         callback(result.completion);
                     } else {
                         callback([]);
                     }
                 },
                 null,
-                { pause: false }
+                { pause: false },
             );
         }
 
-        function logout() {
-            silent_mode = true;
+        /**
+         * Tear down the terminal state on unload. Suppresses the
+         * jquery.terminal exception handler because the DOM may already
+         * be half-gone.
+         */
+        const logout = () => {
+            silentMode = true;
             try {
                 terminal.clear();
                 terminal.logout();
-            } catch (error) {
+            } catch (_error) {
                 /* the terminal may already be torn down */
             }
-            silent_mode = false;
-        }
+            silentMode = false;
+        };
 
-        var terminal = $('body').terminal(interpreter, {
-            login: !no_login ? login : false,
+        /**
+         * Declared up front with `let` (rather than `const terminal =
+         * $.terminal(...)`) so every helper closure that captures it —
+         * interpreter/login/completion/logout/renderOutput — is outside
+         * the temporal dead zone by the time jquery.terminal can fire a
+         * synchronous callback during initialisation.
+         *
+         * @type {object | undefined}
+         */
+        let terminal;
+        terminal = $('body').terminal(interpreter, {
+            login: !noLogin ? login : false,
             prompt: makePrompt(),
-            greetings: !no_login ? 'You are authenticated' : '',
-            completion: completion,
-            onBlur: function () {
-                return false;
-            },
-            exceptionHandler: function (error) {
-                if (!silent_mode) {
+            greetings: !noLogin ? 'You are authenticated' : '',
+            completion,
+            onBlur: () => false,
+            exceptionHandler: (error) => {
+                if (!silentMode && terminal) {
                     terminal.exception(error);
                 }
-            }
+            },
         });
 
-        if (no_login) {
+        if (noLogin) {
             terminal.set_token('NO_LOGIN');
         } else {
             logout();
-            window.addEventListener('beforeunload', function () {
+            window.addEventListener('beforeunload', () => {
                 logout();
             });
         }
 
-        if (banner_main) {
-            terminal.echo(banner_main);
+        if (bannerMain) {
+            terminal.echo(bannerMain);
         }
-        if (banner_extra) {
-            terminal.echo(banner_extra);
+        if (bannerExtra) {
+            terminal.echo(bannerExtra);
         }
     });
 })(jQuery);

@@ -8,3 +8,7 @@
 /.build/
 /composer.lock
 /.php-cs-fixer.cache
+
+# npm dev-tooling (biome)
+/node_modules/
+/package-lock.json

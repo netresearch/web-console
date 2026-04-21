@@ -1,0 +1,16 @@
+{
+    "name": "netresearch-web-console",
+    "private": true,
+    "description": "Dev tooling for the netresearch/web-console frontend assets.",
+    "license": "LGPL-3.0-or-later",
+    "engines": {
+        "node": ">=20"
+    },
+    "devDependencies": {
+        "@biomejs/biome": "^2.4.12"
+    },
+    "scripts": {
+        "ci:js:check": "biome check resources/js",
+        "ci:js:fix": "biome check --write resources/js"
+    }
+}

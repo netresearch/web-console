@@ -77,5 +77,10 @@ return (new PhpCsFixer\Config())
     ->setFinder(
         PhpCsFixer\Finder::create()
             ->exclude('.build')
+            // webconsole.php is a 198 KB bundle of inline JS/CSS produced by the
+            // upstream Grunt build. php-cs-fixer's PCRE chokes on it (backtrack
+            // limit exhausted). Re-enable once source/bundle split lands in
+            // v0.11.0.
+            ->notName('webconsole.php')
             ->in(__DIR__)
     );
